@@ -18,9 +18,11 @@ private:
 	QWidget *controlArea;
 	QGridLayout *mainLayout;
 	QPointer<QCheckBox> activeOnly;
+	QPointer<QCheckBox> usePercent;
 	OBSSignal sourceAddedSignal;
 	OBSSignal sourceRemovedSignal;
 	bool showInactive;
+	bool showVisible;
 
 	std::vector<OBSAdvAudioCtrl *> controls;
 
@@ -35,12 +37,12 @@ public slots:
 	void SourceAdded(OBSSource source);
 	void SourceRemoved(OBSSource source);
 
-	void ShowContextMenu(const QPoint &pos);
-	void SetVolumeType();
+	void SetVolumeType(bool percent);
 	void ActiveOnlyChanged(bool checked);
 
 public:
 	OBSBasicAdvAudio(QWidget *parent);
 	~OBSBasicAdvAudio();
 	void SetShowInactive(bool showInactive);
+	void SetIconsVisible(bool visible);
 };

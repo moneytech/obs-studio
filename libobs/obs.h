@@ -420,6 +420,17 @@ EXPORT int obs_open_module(obs_module_t **module, const char *path,
  */
 EXPORT bool obs_init_module(obs_module_t *module);
 
+/** Returns a module based upon its name, or NULL if not found */
+EXPORT obs_module_t *obs_get_module(const char *name);
+
+/** Returns locale text from a specific module */
+EXPORT bool obs_module_get_locale_string(const obs_module_t *mod,
+					 const char *lookup_string,
+					 const char **translated_string);
+
+EXPORT const char *obs_module_get_locale_text(const obs_module_t *mod,
+					      const char *text);
+
 /** Logs loaded modules */
 EXPORT void obs_log_loaded_modules(void);
 
@@ -517,6 +528,10 @@ EXPORT bool obs_enum_source_types(size_t idx, const char **id);
  * etc).
  */
 EXPORT bool obs_enum_input_types(size_t idx, const char **id);
+EXPORT bool obs_enum_input_types2(size_t idx, const char **id,
+				  const char **unversioned_id);
+
+EXPORT const char *obs_get_latest_input_type_id(const char *unversioned_id);
 
 /**
  * Enumerates all available filter source types.
@@ -630,7 +645,7 @@ EXPORT gs_effect_t *obs_get_base_effect(enum obs_base_effect effect);
 
 #ifndef SWIG
 /* DEPRECATED: gets texture_rect default effect */
-DEPRECATED
+OBS_DEPRECATED
 EXPORT gs_effect_t *obs_get_default_rect_effect(void);
 #endif
 
@@ -642,7 +657,7 @@ EXPORT proc_handler_t *obs_get_proc_handler(void);
 
 #ifndef SWIG
 /** Renders the main view */
-DEPRECATED
+OBS_DEPRECATED
 EXPORT void obs_render_main_view(void);
 #endif
 
@@ -740,6 +755,19 @@ EXPORT bool obs_nv12_tex_active(void);
 EXPORT void obs_apply_private_data(obs_data_t *settings);
 EXPORT void obs_set_private_data(obs_data_t *settings);
 EXPORT obs_data_t *obs_get_private_data(void);
+
+typedef void (*obs_task_t)(void *param);
+
+enum obs_task_type {
+	OBS_TASK_UI,
+	OBS_TASK_GRAPHICS,
+};
+
+EXPORT void obs_queue_task(enum obs_task_type type, obs_task_t task,
+			   void *param, bool wait);
+
+typedef void (*obs_task_handler_t)(obs_task_t task, void *param, bool wait);
+EXPORT void obs_set_ui_task_handler(obs_task_handler_t handler);
 
 /* ------------------------------------------------------------------------- */
 /* View context */
@@ -938,6 +966,7 @@ EXPORT enum obs_source_type obs_source_get_type(const obs_source_t *source);
 
 /** Gets the source identifier */
 EXPORT const char *obs_source_get_id(const obs_source_t *source);
+EXPORT const char *obs_source_get_unversioned_id(const obs_source_t *source);
 
 /** Returns the signal handler for a source */
 EXPORT signal_handler_t *
@@ -1175,6 +1204,8 @@ EXPORT void obs_source_output_video(obs_source_t *source,
 EXPORT void obs_source_output_video2(obs_source_t *source,
 				     const struct obs_source_frame2 *frame);
 
+EXPORT void obs_source_set_async_rotation(obs_source_t *source, long rotation);
+
 /**
  * Preloads asynchronous video data to allow instantaneous playback
  *
@@ -1189,6 +1220,18 @@ EXPORT void obs_source_preload_video2(obs_source_t *source,
 
 /** Shows any preloaded video data */
 EXPORT void obs_source_show_preloaded_video(obs_source_t *source);
+
+/**
+ * Sets current async video frame immediately
+ *
+ * NOTE: Non-YUV formats will always be treated as full range with this
+ * function!  Use obs_source_preload_video2 instead if partial range support is
+ * desired for non-YUV video formats.
+ */
+EXPORT void obs_source_set_video_frame(obs_source_t *source,
+				       const struct obs_source_frame *frame);
+EXPORT void obs_source_set_video_frame2(obs_source_t *source,
+					const struct obs_source_frame2 *frame);
 
 /** Outputs audio data (always asynchronous) */
 EXPORT void obs_source_output_audio(obs_source_t *source,
@@ -1316,6 +1359,19 @@ EXPORT void obs_source_set_audio_active(obs_source_t *source, bool show);
 EXPORT bool obs_source_audio_active(const obs_source_t *source);
 
 EXPORT uint32_t obs_source_get_last_obs_version(const obs_source_t *source);
+
+/** Media controls */
+EXPORT void obs_source_media_play_pause(obs_source_t *source, bool pause);
+EXPORT void obs_source_media_restart(obs_source_t *source);
+EXPORT void obs_source_media_stop(obs_source_t *source);
+EXPORT void obs_source_media_next(obs_source_t *source);
+EXPORT void obs_source_media_previous(obs_source_t *source);
+EXPORT int64_t obs_source_media_get_duration(obs_source_t *source);
+EXPORT int64_t obs_source_media_get_time(obs_source_t *source);
+EXPORT void obs_source_media_set_time(obs_source_t *source, int64_t ms);
+EXPORT enum obs_media_state obs_source_media_get_state(obs_source_t *source);
+EXPORT void obs_source_media_started(obs_source_t *source);
+EXPORT void obs_source_media_ended(obs_source_t *source);
 
 /* ------------------------------------------------------------------------- */
 /* Transition-specific functions */
@@ -1450,6 +1506,9 @@ EXPORT obs_scene_t *obs_scene_from_source(const obs_source_t *source);
 EXPORT obs_sceneitem_t *obs_scene_find_source(obs_scene_t *scene,
 					      const char *name);
 
+EXPORT obs_sceneitem_t *obs_scene_find_source_recursive(obs_scene_t *scene,
+							const char *name);
+
 EXPORT obs_sceneitem_t *obs_scene_find_sceneitem_by_id(obs_scene_t *scene,
 						       int64_t id);
 
@@ -1582,6 +1641,13 @@ EXPORT obs_sceneitem_t *obs_scene_insert_group(obs_scene_t *scene,
 					       obs_sceneitem_t **items,
 					       size_t count);
 
+EXPORT obs_sceneitem_t *obs_scene_add_group2(obs_scene_t *scene,
+					     const char *name, bool signal);
+EXPORT obs_sceneitem_t *obs_scene_insert_group2(obs_scene_t *scene,
+						const char *name,
+						obs_sceneitem_t **items,
+						size_t count, bool signal);
+
 EXPORT obs_sceneitem_t *obs_scene_get_group(obs_scene_t *scene,
 					    const char *name);
 
@@ -1590,6 +1656,7 @@ EXPORT bool obs_sceneitem_is_group(obs_sceneitem_t *item);
 EXPORT obs_scene_t *obs_sceneitem_group_get_scene(const obs_sceneitem_t *group);
 
 EXPORT void obs_sceneitem_group_ungroup(obs_sceneitem_t *group);
+EXPORT void obs_sceneitem_group_ungroup2(obs_sceneitem_t *group, bool signal);
 
 EXPORT void obs_sceneitem_group_add_item(obs_sceneitem_t *group,
 					 obs_sceneitem_t *item);
@@ -1959,6 +2026,9 @@ EXPORT enum obs_encoder_type obs_encoder_get_type(const obs_encoder_t *encoder);
 EXPORT void obs_encoder_set_scaled_size(obs_encoder_t *encoder, uint32_t width,
 					uint32_t height);
 
+/** For video encoders, returns true if pre-encode scaling is enabled */
+EXPORT bool obs_encoder_scaling_enabled(const obs_encoder_t *encoder);
+
 /** For video encoders, returns the width of the encoded image */
 EXPORT uint32_t obs_encoder_get_width(const obs_encoder_t *encoder);
 
@@ -2037,11 +2107,11 @@ EXPORT uint32_t obs_encoder_get_caps(const obs_encoder_t *encoder);
 
 #ifndef SWIG
 /** Duplicates an encoder packet */
-DEPRECATED
+OBS_DEPRECATED
 EXPORT void obs_duplicate_encoder_packet(struct encoder_packet *dst,
 					 const struct encoder_packet *src);
 
-DEPRECATED
+OBS_DEPRECATED
 EXPORT void obs_free_encoder_packet(struct encoder_packet *packet);
 #endif
 
@@ -2054,6 +2124,10 @@ EXPORT void *obs_encoder_create_rerouted(obs_encoder_t *encoder,
 
 /** Returns whether encoder is paused */
 EXPORT bool obs_encoder_paused(const obs_encoder_t *output);
+
+EXPORT const char *obs_encoder_get_last_error(obs_encoder_t *encoder);
+EXPORT void obs_encoder_set_last_error(obs_encoder_t *encoder,
+				       const char *message);
 
 /* ------------------------------------------------------------------------- */
 /* Stream Services */

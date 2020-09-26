@@ -191,6 +191,7 @@ struct DShowInput {
 	video_range_type range;
 	obs_source_frame2 frame;
 	obs_source_audio audio;
+	long lastRotation = 0;
 
 	WinHandle semaphore;
 	WinHandle activated_event;
@@ -269,7 +270,8 @@ struct DShowInput {
 				size_t size, long long ts);
 
 	void OnVideoData(const VideoConfig &config, unsigned char *data,
-			 size_t size, long long startTime, long long endTime);
+			 size_t size, long long startTime, long long endTime,
+			 long rotation);
 	void OnAudioData(const AudioConfig &config, unsigned char *data,
 			 size_t size, long long startTime, long long endTime);
 
@@ -518,8 +520,13 @@ void DShowInput::OnEncodedVideoData(enum AVCodecID id, unsigned char *data,
 
 void DShowInput::OnVideoData(const VideoConfig &config, unsigned char *data,
 			     size_t size, long long startTime,
-			     long long endTime)
+			     long long endTime, long rotation)
 {
+	if (rotation != lastRotation) {
+		lastRotation = rotation;
+		obs_source_set_async_rotation(source, rotation);
+	}
+
 	if (videoConfig.format == VideoFormat::H264) {
 		OnEncodedVideoData(AV_CODEC_ID_H264, data, size, startTime);
 		return;
@@ -539,8 +546,13 @@ void DShowInput::OnVideoData(const VideoConfig &config, unsigned char *data,
 	frame.format = ConvertVideoFormat(config.format);
 	frame.flip = flip;
 
-	if (config.cy_flip)
-		frame.flip = !frame.flip;
+	/* YUV DIBS are always top-down */
+	if (config.format == VideoFormat::XRGB ||
+	    config.format == VideoFormat::ARGB) {
+		/* RGB DIBs are bottom-up by default */
+		if (!config.cy_flip)
+			frame.flip = !frame.flip;
+	}
 
 	if (videoConfig.format == VideoFormat::XRGB ||
 	    videoConfig.format == VideoFormat::ARGB) {
@@ -931,7 +943,7 @@ bool DShowInput::UpdateVideoConfig(obs_data_t *settings)
 	videoConfig.callback = std::bind(&DShowInput::OnVideoData, this,
 					 placeholders::_1, placeholders::_2,
 					 placeholders::_3, placeholders::_4,
-					 placeholders::_5);
+					 placeholders::_5, placeholders::_6);
 
 	videoConfig.format = videoConfig.internalFormat;
 
@@ -1060,11 +1072,11 @@ DShowInput::GetColorSpace(obs_data_t *settings) const
 
 	if (astrcmpi(space, "709") == 0)
 		return VIDEO_CS_709;
-	else if (astrcmpi(space, "601") == 0)
+
+	if (astrcmpi(space, "601") == 0)
 		return VIDEO_CS_601;
-	else
-		return (videoConfig.format == VideoFormat::HDYC) ? VIDEO_CS_709
-								 : VIDEO_CS_601;
+
+	return VIDEO_CS_DEFAULT;
 }
 
 inline enum video_range_type
@@ -1133,12 +1145,22 @@ static const char *GetDShowInputName(void *)
 	return TEXT_INPUT_NAME;
 }
 
+static void proc_activate(void *data, calldata_t *cd)
+{
+	bool activate = calldata_bool(cd, "active");
+	DShowInput *input = reinterpret_cast<DShowInput *>(data);
+	input->SetActive(activate);
+}
+
 static void *CreateDShowInput(obs_data_t *settings, obs_source_t *source)
 {
 	DShowInput *dshow = nullptr;
 
 	try {
 		dshow = new DShowInput(source, settings);
+		proc_handler_t *ph = obs_source_get_proc_handler(source);
+		proc_handler_add(ph, "void activate(bool active)",
+				 proc_activate, dshow);
 	} catch (const char *error) {
 		blog(LOG_ERROR, "Could not create device '%s': %s",
 		     obs_source_get_name(source), error);

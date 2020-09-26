@@ -17,9 +17,9 @@
 
 #pragma once
 
-#ifdef __aarch64__
+#if NEEDS_SIMDE
 
-#include "aarch/sse2.h"
+#include "simde/sse2.h"
 
 #define __m128 simde__m128
 #define _mm_setzero_ps simde_mm_setzero_ps
@@ -60,7 +60,12 @@
 
 #else
 
+#if defined(__aarch64__) || defined(__arm__)
+#include <arm_neon.h>
+#include "sse2neon.h"
+#else
 #include <xmmintrin.h>
 #include <emmintrin.h>
+#endif
 
 #endif

@@ -496,19 +496,24 @@ void OBSBasic::on_actionImportProfile_triggered()
 		return;
 	}
 
-	QString dir = QFileDialog::getExistingDirectory(
-		this, QTStr("Basic.MainMenu.Profile.Import"), home,
-		QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+	QString dir = SelectDirectory(
+		this, QTStr("Basic.MainMenu.Profile.Import"), home);
 
 	if (!dir.isEmpty() && !dir.isNull()) {
 		QString inputPath = QString::fromUtf8(path);
 		QFileInfo finfo(dir);
 		QString directory = finfo.fileName();
 		QString profileDir = inputPath + directory;
-		QDir folder(profileDir);
 
-		if (!folder.exists()) {
-			folder.mkpath(profileDir);
+		if (ProfileExists(directory.toStdString().c_str())) {
+			OBSMessageBox::warning(
+				this, QTStr("Basic.MainMenu.Profile.Import"),
+				QTStr("Basic.MainMenu.Profile.Exists"));
+		} else if (os_mkdir(profileDir.toStdString().c_str()) < 0) {
+			blog(LOG_WARNING,
+			     "Failed to create profile directory '%s'",
+			     directory.toStdString().c_str());
+		} else {
 			QFile::copy(dir + "/basic.ini",
 				    profileDir + "/basic.ini");
 			QFile::copy(dir + "/service.json",
@@ -518,10 +523,6 @@ void OBSBasic::on_actionImportProfile_triggered()
 			QFile::copy(dir + "/recordEncoder.json",
 				    profileDir + "/recordEncoder.json");
 			RefreshProfiles();
-		} else {
-			OBSMessageBox::warning(
-				this, QTStr("Basic.MainMenu.Profile.Import"),
-				QTStr("Basic.MainMenu.Profile.Exists"));
 		}
 	}
 }
@@ -541,9 +542,8 @@ void OBSBasic::on_actionExportProfile_triggered()
 		return;
 	}
 
-	QString dir = QFileDialog::getExistingDirectory(
-		this, QTStr("Basic.MainMenu.Profile.Export"), home,
-		QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+	QString dir = SelectDirectory(
+		this, QTStr("Basic.MainMenu.Profile.Export"), home);
 
 	if (!dir.isEmpty() && !dir.isNull()) {
 		QString outputDir = dir + "/" + currentProfile;

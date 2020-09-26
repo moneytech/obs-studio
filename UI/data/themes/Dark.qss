@@ -119,6 +119,11 @@ SourceTree QLineEdit {
 
 /* Dock Widget */
 
+QDockWidget {
+	titlebar-close-icon: url('./Dark/close.svg');
+	titlebar-normal-icon: url('./Dark/popout.svg');
+}
+
 QDockWidget::title {
     text-align: center;
     background-color: rgb(70,69,70);
@@ -215,6 +220,19 @@ QScrollBar::left-arrow:horizontal, QScrollBar::right-arrow:horizontal, QScrollBa
     color: none;
 }
 
+/* Source Context */
+#contextContainer QPushButton[themeID2=contextBarButton] {
+    padding: 3px;
+    margin: 0px;
+}
+
+#contextContainer QPushButton#sourcePropertiesButton {
+    qproperty-icon: url(./Dark/settings/general.svg);
+}
+
+#contextContainer QPushButton#sourceFiltersButton {
+    qproperty-icon: url(./Dark/filter.svg);
+}
 
 /* Scenes and Sources toolbar */
 
@@ -814,14 +832,13 @@ SceneTree {
 /* Studio Mode T-Bar */
 
 QSlider[themeID="tBarSlider"] {
-	height: 80px;
+	height: 24px;
 }
 
 QSlider::groove:horizontal[themeID="tBarSlider"] {
 	border: 1px solid #4c4c4c;
 	height: 5px;
-	background: rgb(31,30,31);;
-	margin: 0 12px;
+	background: rgb(31,30,31);
 }
 
 QSlider::sub-page:horizontal[themeID="tBarSlider"] {
@@ -831,7 +848,33 @@ QSlider::sub-page:horizontal[themeID="tBarSlider"] {
 
 QSlider::handle:horizontal[themeID="tBarSlider"] {
 	background-color: #d2d2d2;
-	width: 25px;
-	height: 80px;
-	margin: -24px -12px;
+	width: 12px;
+	height: 24px;
+	margin: -24px 0px;
+}
+
+/* Media icons */
+
+* [themeID="playIcon"] {
+    qproperty-icon: url(./Dark/media/media_play.svg);
+}
+
+* [themeID="pauseIcon"] {
+    qproperty-icon: url(./Dark/media/media_pause.svg);
+}
+
+* [themeID="restartIcon"] {
+    qproperty-icon: url(./Dark/media/media_restart.svg);
+}
+
+* [themeID="stopIcon"] {
+    qproperty-icon: url(./Dark/media/media_stop.svg);
+}
+
+* [themeID="nextIcon"] {
+    qproperty-icon: url(./Dark/media/media_next.svg);
+}
+
+* [themeID="previousIcon"] {
+    qproperty-icon: url(./Dark/media/media_previous.svg);
 }

@@ -59,21 +59,25 @@ SourceTreeItem::SourceTreeItem(SourceTree *tree_, OBSSceneItem sceneitem_)
 
 	OBSBasic *main = reinterpret_cast<OBSBasic *>(App()->GetMainWindow());
 	const char *id = obs_source_get_id(source);
-	QIcon icon;
 
-	if (strcmp(id, "scene") == 0)
-		icon = main->GetSceneIcon();
-	else if (strcmp(id, "group") == 0)
-		icon = main->GetGroupIcon();
-	else
-		icon = main->GetSourceIcon(id);
+	QLabel *iconLabel = nullptr;
+	if (tree->iconsVisible) {
+		QIcon icon;
 
-	QPixmap pixmap = icon.pixmap(QSize(16, 16));
+		if (strcmp(id, "scene") == 0)
+			icon = main->GetSceneIcon();
+		else if (strcmp(id, "group") == 0)
+			icon = main->GetGroupIcon();
+		else
+			icon = main->GetSourceIcon(id);
 
-	QLabel *iconLabel = new QLabel();
-	iconLabel->setPixmap(pixmap);
-	iconLabel->setFixedSize(16, 16);
-	iconLabel->setStyleSheet("background: none");
+		QPixmap pixmap = icon.pixmap(QSize(16, 16));
+
+		iconLabel = new QLabel();
+		iconLabel->setPixmap(pixmap);
+		iconLabel->setFixedSize(16, 16);
+		iconLabel->setStyleSheet("background: none");
+	}
 
 	vis = new VisibilityCheckBox();
 	vis->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Maximum);
@@ -100,8 +104,10 @@ SourceTreeItem::SourceTreeItem(SourceTree *tree_, OBSSceneItem sceneitem_)
 	boxLayout = new QHBoxLayout();
 
 	boxLayout->setContentsMargins(0, 0, 0, 0);
-	boxLayout->addWidget(iconLabel);
-	boxLayout->addSpacing(2);
+	if (iconLabel) {
+		boxLayout->addWidget(iconLabel);
+		boxLayout->addSpacing(2);
+	}
 	boxLayout->addWidget(label);
 	boxLayout->addWidget(vis);
 	boxLayout->addSpacing(1);
@@ -145,6 +151,7 @@ void SourceTreeItem::DisconnectSignals()
 {
 	sceneRemoveSignal.Disconnect();
 	itemRemoveSignal.Disconnect();
+	selectSignal.Disconnect();
 	deselectSignal.Disconnect();
 	visibleSignal.Disconnect();
 	lockedSignal.Disconnect();
@@ -206,6 +213,16 @@ void SourceTreeItem::ReconnectSignals()
 						  Q_ARG(bool, locked));
 	};
 
+	auto itemSelect = [](void *data, calldata_t *cd) {
+		SourceTreeItem *this_ =
+			reinterpret_cast<SourceTreeItem *>(data);
+		obs_sceneitem_t *curItem =
+			(obs_sceneitem_t *)calldata_ptr(cd, "item");
+
+		if (curItem == this_->sceneitem)
+			QMetaObject::invokeMethod(this_, "Select");
+	};
+
 	auto itemDeselect = [](void *data, calldata_t *cd) {
 		SourceTreeItem *this_ =
 			reinterpret_cast<SourceTreeItem *>(data);
@@ -230,6 +247,8 @@ void SourceTreeItem::ReconnectSignals()
 	itemRemoveSignal.Connect(signal, "item_remove", removeItem, this);
 	visibleSignal.Connect(signal, "item_visible", itemVisible, this);
 	lockedSignal.Connect(signal, "item_locked", itemLocked, this);
+	selectSignal.Connect(signal, "item_select", itemSelect, this);
+	deselectSignal.Connect(signal, "item_deselect", itemDeselect, this);
 
 	if (obs_sceneitem_is_group(sceneitem)) {
 		obs_source_t *source = obs_sceneitem_get_source(sceneitem);
@@ -238,10 +257,6 @@ void SourceTreeItem::ReconnectSignals()
 		groupReorderSignal.Connect(signal, "reorder", reorderGroup,
 					   this);
 	}
-
-	if (scene != GetCurrentScene())
-		deselectSignal.Connect(signal, "item_deselect", itemDeselect,
-				       this);
 
 	/* --------------------------------------------------------- */
 
@@ -312,12 +327,13 @@ bool SourceTreeItem::IsEditing()
 void SourceTreeItem::EnterEditMode()
 {
 	setFocusPolicy(Qt::StrongFocus);
+	int index = boxLayout->indexOf(label);
 	boxLayout->removeWidget(label);
 	editor = new QLineEdit(label->text());
 	editor->setStyleSheet("background: none");
 	editor->selectAll();
 	editor->installEventFilter(this);
-	boxLayout->insertWidget(2, editor);
+	boxLayout->insertWidget(index, editor);
 	setFocusProxy(editor);
 }
 
@@ -332,11 +348,12 @@ void SourceTreeItem::ExitEditMode(bool save)
 	std::string newName = QT_TO_UTF8(editor->text());
 
 	setFocusProxy(nullptr);
+	int index = boxLayout->indexOf(editor);
 	boxLayout->removeWidget(editor);
 	delete editor;
 	editor = nullptr;
 	setFocusPolicy(Qt::NoFocus);
-	boxLayout->insertWidget(2, label);
+	boxLayout->insertWidget(index, label);
 
 	/* ----------------------------------------- */
 	/* check for empty string                    */
@@ -508,9 +525,16 @@ void SourceTreeItem::ExpandClicked(bool checked)
 		tree->GetStm()->CollapseGroup(sceneitem);
 }
 
+void SourceTreeItem::Select()
+{
+	tree->SelectItem(sceneitem, true);
+	OBSBasic::Get()->UpdateContextBar();
+}
+
 void SourceTreeItem::Deselect()
 {
 	tree->SelectItem(sceneitem, false);
+	OBSBasic::Get()->UpdateContextBar();
 }
 
 /* ========================================================================= */
@@ -969,6 +993,14 @@ SourceTree::SourceTree(QWidget *parent_) : QListView(parent_)
 void SourceTree::UpdateIcons()
 {
 	SourceTreeModel *stm = GetStm();
+	stm->SceneChanged();
+}
+
+void SourceTree::SetIconsVisible(bool visible)
+{
+	SourceTreeModel *stm = GetStm();
+
+	iconsVisible = visible;
 	stm->SceneChanged();
 }
 

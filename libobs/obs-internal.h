@@ -92,6 +92,8 @@ struct obs_module {
 	void (*unload)(void);
 	void (*post_load)(void);
 	void (*set_locale)(const char *locale);
+	bool (*get_string)(const char *lookup_string,
+			   const char **translated_string);
 	void (*free_locale)(void);
 	uint32_t (*ver)(void);
 	void (*set_pointer)(obs_module_t *module);
@@ -234,6 +236,11 @@ struct obs_tex_frame {
 	bool released;
 };
 
+struct obs_task_info {
+	obs_task_t task;
+	void *param;
+};
+
 struct obs_core_video {
 	graphics_t *graphics;
 	gs_stagesurf_t *copy_surfaces[NUM_TEXTURES][NUM_CHANNELS];
@@ -306,6 +313,9 @@ struct obs_core_video {
 	gs_effect_t *deinterlace_yadif_2x_effect;
 
 	struct obs_video_info ovi;
+
+	pthread_mutex_t task_mutex;
+	struct circlebuf tasks;
 };
 
 struct audio_monitor;
@@ -420,11 +430,33 @@ struct obs_core {
 	struct obs_core_audio audio;
 	struct obs_core_data data;
 	struct obs_core_hotkeys hotkeys;
+
+	obs_task_handler_t ui_task_handler;
 };
 
 extern struct obs_core *obs;
 
+struct obs_graphics_context {
+	uint64_t last_time;
+	uint64_t interval;
+	uint64_t frame_time_total_ns;
+	uint64_t fps_total_ns;
+	uint32_t fps_total_frames;
+#ifdef _WIN32
+	bool gpu_was_active;
+#endif
+	bool raw_was_active;
+	bool was_active;
+	const char *video_thread_name;
+};
+
 extern void *obs_graphics_thread(void *param);
+extern bool obs_graphics_thread_loop(struct obs_graphics_context *context);
+#ifdef __APPLE__
+extern void *obs_graphics_thread_autorelease(void *param);
+extern bool
+obs_graphics_thread_loop_autorelease(struct obs_graphics_context *context);
+#endif
 
 extern gs_effect_t *obs_load_effect(gs_effect_t **effect, const char *file);
 
@@ -569,7 +601,7 @@ struct obs_source {
 	bool owns_info_id;
 
 	/* signals to call the source update in the video thread */
-	bool defer_update;
+	long defer_update_count;
 
 	/* ensures show/hide are only called once */
 	volatile long show_refs;
@@ -641,6 +673,7 @@ struct obs_source {
 	bool async_cache_full_range;
 	enum gs_color_format async_texture_formats[MAX_AV_PLANES];
 	int async_channel_count;
+	long async_rotation;
 	bool async_flip;
 	bool async_active;
 	bool async_update_texture;
@@ -725,6 +758,8 @@ struct obs_source {
 };
 
 extern struct obs_source_info *get_source_info(const char *id);
+extern struct obs_source_info *get_source_info2(const char *unversioned_id,
+						uint32_t ver);
 extern bool obs_source_init_context(struct obs_source *source,
 				    obs_data_t *settings, const char *name,
 				    obs_data_t *hotkey_data, bool private);
@@ -1063,6 +1098,7 @@ struct obs_encoder {
 	struct pause_data pause;
 
 	const char *profile_encoder_encode_name;
+	char *last_error_message;
 };
 
 extern struct obs_encoder_info *find_encoder(const char *id);

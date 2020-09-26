@@ -139,7 +139,7 @@ gs_texture_t *device_voltexture_create(gs_device_t *device, uint32_t width,
 	tex->base.gl_type = get_gl_format_type(color_format);
 	tex->base.gl_target = GL_TEXTURE_3D;
 	tex->base.is_dynamic = (flags & GS_DYNAMIC) != 0;
-	tex->base.is_render_target = (flags & GS_RENDER_TARGET) != 0;
+	tex->base.is_render_target = false;
 	tex->base.is_dummy = (flags & GS_GL_DUMMYTEX) != 0;
 	tex->base.gen_mipmaps = (flags & GS_BUILD_MIPMAPS) != 0;
 	tex->width = width;
@@ -178,4 +178,9 @@ fail:
 	gs_texture_destroy((gs_texture_t *)tex);
 	blog(LOG_ERROR, "device_voltexture_create (GL) failed");
 	return NULL;
+}
+
+void gs_voltexture_destroy(gs_texture_t *voltex)
+{
+	gs_texture_destroy(voltex);
 }

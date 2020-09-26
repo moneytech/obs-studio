@@ -302,9 +302,6 @@ void gs_texture_3d::Rebuild(ID3D11Device *dev)
 	if (FAILED(hr))
 		throw HRError("Failed to create resource view", hr);
 
-	if (isRenderTarget)
-		InitRenderTargets();
-
 	acquired = false;
 
 	if ((td.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX) != 0) {
@@ -350,6 +347,9 @@ try {
 	blog(LOG_WARNING, "Device Remove/Reset!  Rebuilding all assets...");
 
 	/* ----------------------------------------------------------------- */
+
+	for (gs_device_loss &callback : loss_callbacks)
+		callback.device_loss_release(callback.data);
 
 	gs_obj *obj = first_obj;
 
@@ -407,6 +407,7 @@ try {
 		state.Release();
 
 	context->ClearState();
+	context->Flush();
 
 	context.Release();
 	device.Release();
@@ -508,6 +509,9 @@ try {
 		state.Rebuild(dev);
 	for (auto &state : blendStates)
 		state.Rebuild(dev);
+
+	for (gs_device_loss &callback : loss_callbacks)
+		callback.device_loss_rebuild(device.Get(), callback.data);
 
 } catch (const char *error) {
 	bcrash("Failed to recreate D3D11: %s", error);

@@ -1,12 +1,13 @@
-#include "window-basic-auto-config.hpp"
-#include "window-basic-main.hpp"
-#include "qt-wrappers.hpp"
-#include "obs-app.hpp"
-
 #include <QMessageBox>
 #include <QScreen>
 
 #include <obs.hpp>
+
+#include "window-basic-auto-config.hpp"
+#include "window-basic-main.hpp"
+#include "qt-wrappers.hpp"
+#include "obs-app.hpp"
+#include "url-push-button.hpp"
 
 #include "ui_AutoConfigStartPage.h"
 #include "ui_AutoConfigVideoPage.h"
@@ -68,6 +69,18 @@ AutoConfigStartPage::AutoConfigStartPage(QWidget *parent)
 	ui->setupUi(this);
 	setTitle(QTStr("Basic.AutoConfig.StartPage"));
 	setSubTitle(QTStr("Basic.AutoConfig.StartPage.SubTitle"));
+
+	OBSBasic *main = OBSBasic::Get();
+	if (main->VCamEnabled()) {
+		QRadioButton *prioritizeVCam = new QRadioButton(
+			QTStr("Basic.AutoConfig.StartPage.PrioritizeVirtualCam"),
+			this);
+		QBoxLayout *box = reinterpret_cast<QBoxLayout *>(layout());
+		box->insertWidget(2, prioritizeVCam);
+
+		connect(prioritizeVCam, &QPushButton::clicked, this,
+			&AutoConfigStartPage::PrioritizeVCam);
+	}
 }
 
 AutoConfigStartPage::~AutoConfigStartPage()
@@ -77,7 +90,9 @@ AutoConfigStartPage::~AutoConfigStartPage()
 
 int AutoConfigStartPage::nextId() const
 {
-	return AutoConfig::VideoPage;
+	return wiz->type == AutoConfig::Type::VirtualCam
+		       ? AutoConfig::TestPage
+		       : AutoConfig::VideoPage;
 }
 
 void AutoConfigStartPage::on_prioritizeStreaming_clicked()
@@ -88,6 +103,11 @@ void AutoConfigStartPage::on_prioritizeStreaming_clicked()
 void AutoConfigStartPage::on_prioritizeRecording_clicked()
 {
 	wiz->type = AutoConfig::Type::Recording;
+}
+
+void AutoConfigStartPage::PrioritizeVCam()
+{
+	wiz->type = AutoConfig::Type::VirtualCam;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -253,6 +273,10 @@ AutoConfigStreamPage::AutoConfigStreamPage(QWidget *parent)
 		SLOT(ServiceChanged()));
 	connect(ui->customServer, SIGNAL(textChanged(const QString &)), this,
 		SLOT(ServiceChanged()));
+	connect(ui->customServer, SIGNAL(textChanged(const QString &)), this,
+		SLOT(UpdateKeyLink()));
+	connect(ui->customServer, SIGNAL(editingFinished()), this,
+		SLOT(UpdateKeyLink()));
 	connect(ui->doBandwidthTest, SIGNAL(toggled(bool)), this,
 		SLOT(ServiceChanged()));
 
@@ -289,7 +313,7 @@ int AutoConfigStreamPage::nextId() const
 	return AutoConfig::TestPage;
 }
 
-inline bool AutoConfigStreamPage::IsCustom() const
+inline bool AutoConfigStreamPage::IsCustomService() const
 {
 	return ui->service->currentData().toInt() == (int)ListOpt::Custom;
 }
@@ -299,7 +323,7 @@ bool AutoConfigStreamPage::validatePage()
 	OBSData service_settings = obs_data_create();
 	obs_data_release(service_settings);
 
-	wiz->customServer = IsCustom();
+	wiz->customServer = IsCustomService();
 
 	const char *serverType = wiz->customServer ? "rtmp_custom"
 						   : "rtmp_common";
@@ -480,7 +504,7 @@ void AutoConfigStreamPage::ServiceChanged()
 	std::string service = QT_TO_UTF8(ui->service->currentText());
 	bool regionBased = service == "Twitch" || service == "Smashcast";
 	bool testBandwidth = ui->doBandwidthTest->isChecked();
-	bool custom = IsCustom();
+	bool custom = IsCustomService();
 
 	ui->disconnectAccount->setVisible(false);
 
@@ -553,51 +577,37 @@ void AutoConfigStreamPage::ServiceChanged()
 
 void AutoConfigStreamPage::UpdateKeyLink()
 {
-	bool custom = IsCustom();
 	QString serviceName = ui->service->currentText();
+	QString customServer = ui->customServer->text();
 	bool isYoutube = false;
+	QString streamKeyLink;
 
-	if (custom)
-		serviceName = "";
-
-	QString text = QTStr("Basic.AutoConfig.StreamPage.StreamKey");
 	if (serviceName == "Twitch") {
-		text += " <a href=\"https://";
-		text += "www.twitch.tv/broadcast/dashboard/streamkey";
-		text += "\">";
-		text += QTStr(
-			"Basic.AutoConfig.StreamPage.StreamKey.LinkToSite");
-		text += "</a>";
+		streamKeyLink =
+			"https://www.twitch.tv/broadcast/dashboard/streamkey";
 	} else if (serviceName == "YouTube / YouTube Gaming") {
-		text += " <a href=\"https://";
-		text += "www.youtube.com/live_dashboard";
-		text += "\">";
-		text += QTStr(
-			"Basic.AutoConfig.StreamPage.StreamKey.LinkToSite");
-		text += "</a>";
-
+		streamKeyLink = "https://www.youtube.com/live_dashboard";
 		isYoutube = true;
 	} else if (serviceName.startsWith("Restream.io")) {
-		text += " <a href=\"https://";
-		text += "restream.io/settings/streaming-setup?from=OBS";
-		text += "\">";
-		text += QTStr(
-			"Basic.AutoConfig.StreamPage.StreamKey.LinkToSite");
-		text += "</a>";
-	} else if (serviceName == "YouStreamer") {
-		text += " <a href=\"https://";
-		text += "app.youstreamer.com/stream";
-		text += "\">";
-		text += QTStr(
-			"Basic.AutoConfig.StreamPage.StreamKey.LinkToSite");
-		text += "</a>";
-	} else if (serviceName == "Facebook Live") {
-		text += " <a href=\"https://";
-		text += "www.facebook.com/live/create";
-		text += "\">";
-		text += QTStr(
-			"Basic.AutoConfig.StreamPage.StreamKey.LinkToSite");
-		text += "</a>";
+		streamKeyLink =
+			"https://restream.io/settings/streaming-setup?from=OBS";
+	} else if (serviceName == "Facebook Live" ||
+		   (customServer.contains("fbcdn.net") && IsCustomService())) {
+		streamKeyLink =
+			"https://www.facebook.com/live/producer?ref=OBS";
+	} else if (serviceName.startsWith("Twitter")) {
+		streamKeyLink = "https://www.pscp.tv/account/producer";
+	} else if (serviceName.startsWith("YouStreamer")) {
+		streamKeyLink = "https://www.app.youstreamer.com/stream/";
+	} else if (serviceName == "Trovo") {
+		streamKeyLink = "https://studio.trovo.live/mychannel/stream";
+	}
+
+	if (QString(streamKeyLink).isNull()) {
+		ui->streamKeyButton->hide();
+	} else {
+		ui->streamKeyButton->setTargetUrl(QUrl(streamKeyLink));
+		ui->streamKeyButton->show();
 	}
 
 	if (isYoutube) {
@@ -606,8 +616,6 @@ void AutoConfigStreamPage::UpdateKeyLink()
 	} else {
 		ui->doBandwidthTest->setEnabled(true);
 	}
-
-	ui->streamKeyLabel->setText(text);
 }
 
 void AutoConfigStreamPage::LoadServices(bool showAll)
@@ -635,7 +643,7 @@ void AutoConfigStreamPage::LoadServices(bool showAll)
 	}
 
 	if (showAll)
-		names.sort();
+		names.sort(Qt::CaseInsensitive);
 
 	for (QString &name : names)
 		ui->service->addItem(name);
@@ -704,7 +712,7 @@ void AutoConfigStreamPage::UpdateCompleted()
 	    (ui->key->text().isEmpty() && !auth)) {
 		ready = false;
 	} else {
-		bool custom = IsCustom();
+		bool custom = IsCustomService();
 		if (custom) {
 			ready = !ui->customServer->text().isEmpty();
 		} else {
@@ -738,7 +746,7 @@ AutoConfig::AutoConfig(QWidget *parent) : QWizard(parent)
 
 	std::string serviceType;
 	GetServiceInfo(serviceType, serviceName, server, key);
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 	setWizardStyle(QWizard::ModernStyle);
 #endif
 	streamPage = new AutoConfigStreamPage();
@@ -843,7 +851,7 @@ AutoConfig::AutoConfig(QWidget *parent) : QWizard(parent)
 		streamPage->ui->preferHardware->setChecked(preferHardware);
 	}
 
-	setOptions(0);
+	setOptions(QWizard::WizardOptions());
 	setButtonText(QWizard::FinishButton,
 		      QTStr("Basic.AutoConfig.ApplySettings"));
 	setButtonText(QWizard::BackButton, QTStr("Back"));

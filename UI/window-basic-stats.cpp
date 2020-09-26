@@ -182,6 +182,9 @@ OBSBasicStats::OBSBasicStats(QWidget *parent, bool closeable)
 	}
 
 	obs_frontend_add_event_callback(OBSFrontendEvent, this);
+
+	if (obs_frontend_recording_active())
+		StartRecTimeLeft();
 }
 
 void OBSBasicStats::closeEvent(QCloseEvent *event)
@@ -412,15 +415,20 @@ void OBSBasicStats::Update()
 
 void OBSBasicStats::StartRecTimeLeft()
 {
+	if (recTimeLeft.isActive())
+		ResetRecTimeLeft();
+
 	recordTimeLeft->setText(QTStr("Calculating"));
 	recTimeLeft.start();
 }
 
 void OBSBasicStats::ResetRecTimeLeft()
 {
-	bitrates.clear();
-	recTimeLeft.stop();
-	recordTimeLeft->setText(QTStr(""));
+	if (recTimeLeft.isActive()) {
+		bitrates.clear();
+		recTimeLeft.stop();
+		recordTimeLeft->setText(QTStr(""));
+	}
 }
 
 void OBSBasicStats::RecordingTimeLeft()
@@ -437,9 +445,9 @@ void OBSBasicStats::RecordingTimeLeft()
 	int minutes = totalMinutes % 60;
 	int hours = totalMinutes / 60;
 
-	QString text;
-	text.sprintf("%d %s, %d %s", hours, QT_TO_UTF8(QTStr("Hours")), minutes,
-		     QT_TO_UTF8(QTStr("Minutes")));
+	QString text = QString::asprintf("%d %s, %d %s", hours,
+					 QT_TO_UTF8(QTStr("Hours")), minutes,
+					 QT_TO_UTF8(QTStr("Minutes")));
 	recordTimeLeft->setText(text);
 	recordTimeLeft->setMinimumWidth(recordTimeLeft->width());
 }
